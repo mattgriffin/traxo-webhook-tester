@@ -4,6 +4,8 @@
   "version": "1.0.0",
   "type": "module",
   "main": "electron/main.cjs",
+  "description": "Desktop app for generating and sending test webhook payloads in the Traxo format",
+  "author": "Matt Griffin <me@mattgriffin.com>",
   "repository": {
     "type": "git",
     "url": "https://github.com/mattgriffin/traxo-webhook-tester.git"
