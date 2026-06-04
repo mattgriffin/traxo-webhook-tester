@@ -1,0 +1,17 @@
+export const airports = [
+  { code: 'DFW', city: 'Dallas-Fort Worth', tz: 'America/Chicago' },
+  { code: 'ORD', city: 'Chicago', tz: 'America/Chicago' },
+  { code: 'LAX', city: 'Los Angeles', tz: 'America/Los_Angeles' },
+  { code: 'JFK', city: 'New York', tz: 'America/New_York' },
+  { code: 'SFO', city: 'San Francisco', tz: 'America/Los_Angeles' },
+  { code: 'MIA', city: 'Miami', tz: 'America/New_York' },
+  { code: 'ATL', city: 'Atlanta', tz: 'America/New_York' },
+  { code: 'SEA', city: 'Seattle', tz: 'America/Los_Angeles' },
+  { code: 'DEN', city: 'Denver', tz: 'America/Denver' },
+  { code: 'BOS', city: 'Boston', tz: 'America/New_York' },
+  { code: 'AUS', city: 'Austin', tz: 'America/Chicago' },
+  { code: 'IAH', city: 'Houston', tz: 'America/Chicago' },
+  { code: 'LHR', city: 'London', tz: 'Europe/London' },
+  { code: 'CDG', city: 'Paris', tz: 'Europe/Paris' },
+  { code: 'NRT', city: 'Tokyo', tz: 'Asia/Tokyo' },
+];
