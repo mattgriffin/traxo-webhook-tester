@@ -356,19 +356,25 @@ async function sendPayload() {
       headers['x-traxo-signature'] = Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
-    headers['x-target-url'] = targetUrl;
-    const res = await fetch('/api/proxy', { method: 'POST', headers, body });
-    const text = await res.text();
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = { raw: text };
+    let status, data;
+
+    if (window.electronAPI) {
+      // Electron: send via IPC to main process (no CORS)
+      const result = await window.electronAPI.sendWebhook({ url: targetUrl, headers, body });
+      status = result.status;
+      try { data = JSON.parse(result.body); } catch { data = { raw: result.body }; }
+    } else {
+      // Browser: use Vite dev proxy
+      headers['x-target-url'] = targetUrl;
+      const res = await fetch('/api/proxy', { method: 'POST', headers, body });
+      status = res.status;
+      const text = await res.text();
+      try { data = JSON.parse(text); } catch { data = { raw: text }; }
     }
 
     sendResults.value.unshift({
       time: new Date().toLocaleTimeString(),
-      status: res.status,
+      status,
       response: data,
       instance: targetName,
       target: targetUrl,

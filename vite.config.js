@@ -52,6 +52,7 @@ function webhookProxy() {
 }
 
 export default defineConfig({
+  base: './',
   plugins: [
     vue(),
     tailwindcss(),

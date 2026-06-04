@@ -1,0 +1,48 @@
+const { app, BrowserWindow, ipcMain, net } = require('electron');
+const path = require('path');
+
+let mainWindow;
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1280,
+    height: 900,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  if (process.env.VITE_DEV_SERVER_URL) {
+    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
+    mainWindow.webContents.openDevTools();
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+  }
+}
+
+app.whenReady().then(createWindow);
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+});
+
+// Proxy webhook requests from renderer to avoid CORS
+ipcMain.handle('webhook:send', async (_event, { url, headers, body }) => {
+  try {
+    const response = await net.fetch(url, {
+      method: 'POST',
+      headers,
+      body,
+    });
+    const text = await response.text();
+    return { status: response.status, body: text };
+  } catch (e) {
+    return { status: 0, body: JSON.stringify({ error: e.message }) };
+  }
+});
