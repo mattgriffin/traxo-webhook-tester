@@ -60,7 +60,7 @@ function handleDeleteTarget(id) {
 }
 
 // --- State ---
-const userAddress = ref('matt.griffin@traxo.com');
+const userAddress = ref('matt.griffin@acmecorp.com');
 const forceMultiTraveler = ref(false);
 const forceTmc = ref(false);
 const payloadText = ref('');
@@ -356,12 +356,14 @@ async function sendPayload() {
       headers['x-traxo-signature'] = Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
-    const res = await fetch(targetUrl, { method: 'POST', headers, body });
+    headers['x-target-url'] = targetUrl;
+    const res = await fetch('/api/proxy', { method: 'POST', headers, body });
+    const text = await res.text();
     let data;
     try {
-      data = await res.json();
+      data = JSON.parse(text);
     } catch {
-      data = { raw: await res.text() };
+      data = { raw: text };
     }
 
     sendResults.value.unshift({
@@ -474,7 +476,7 @@ function handleTab(e) {
               v-model="userAddress"
               type="email"
               class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              placeholder="matt.griffin@traxo.com"
+              placeholder="matt.griffin@acmecorp.com"
             />
           </div>
 
