@@ -1,6 +1,6 @@
 <script setup>
-import { ref, computed, watch } from 'vue';
-import { Send, RefreshCw, Copy, Check, Trash2, Pencil, Eye, Terminal } from 'lucide-vue-next';
+import { ref, computed, watch, onMounted } from 'vue';
+import { Send, RefreshCw, Copy, Check, Trash2, Pencil, Eye, Terminal, Sun, Moon } from 'lucide-vue-next';
 import TargetManager from './TargetManager.vue';
 
 import { airlines } from '../data/airlines.js';
@@ -11,6 +11,20 @@ import { railOperators, railStations } from '../data/rail.js';
 import { rideshareProviders, rideshareLocations } from '../data/rideshare.js';
 import { tmcSources } from '../data/tmc-sources.js';
 import { travelerNames } from '../data/travelers.js';
+
+// --- Theme ---
+const THEME_KEY = 'webhook-tester-theme';
+const isDark = ref(localStorage.getItem(THEME_KEY) !== 'light');
+
+function toggleTheme() {
+  isDark.value = !isDark.value;
+  localStorage.setItem(THEME_KEY, isDark.value ? 'dark' : 'light');
+  document.documentElement.classList.toggle('dark', isDark.value);
+}
+
+onMounted(() => {
+  document.documentElement.classList.toggle('dark', isDark.value);
+});
 
 // --- Targets (localStorage) ---
 const STORAGE_KEY = 'webhook-tester-targets';
@@ -456,16 +470,22 @@ function handleTab(e) {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-950 text-gray-100">
-    <div class="mx-auto max-w-6xl px-4 py-8">
+  <div class="h-screen overflow-hidden flex flex-col transition-colors" style="background: var(--bg-page); color: var(--text-primary);">
+    <div class="mx-auto max-w-6xl px-4 py-6 w-full box-border flex flex-col min-h-0 flex-1">
       <!-- Header -->
-      <div>
-        <h1 class="text-2xl font-bold">Webhook Tester</h1>
-        <p class="mt-1 text-sm text-gray-400">Generate, edit, and send test webhook payloads</p>
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-2xl font-bold">Webhook Tester</h1>
+          <p class="mt-1 text-sm" style="color: var(--text-muted);">Generate, edit, and send test webhook payloads</p>
+        </div>
+        <button @click="toggleTheme" class="rounded-md p-2 transition-colors hover:opacity-70" style="color: var(--text-muted);" title="Toggle theme">
+          <Sun v-if="isDark" class="h-5 w-5" />
+          <Moon v-else class="h-5 w-5" />
+        </button>
       </div>
 
       <!-- Controls -->
-      <div class="mt-6 rounded-lg border border-gray-800 bg-gray-900 p-4">
+      <div class="mt-6 rounded-lg p-4 transition-colors" style="background: var(--bg-card); border: 1px solid var(--border-card);">
         <div class="flex flex-col gap-4 sm:flex-row sm:items-end">
           <!-- Target picker -->
           <TargetManager
@@ -477,23 +497,24 @@ function handleTab(e) {
 
           <!-- Email -->
           <div class="flex-1">
-            <label class="block text-xs font-medium text-gray-400 mb-1">User Address (traveler email)</label>
+            <label class="block text-xs font-medium mb-1" style="color: var(--text-muted);">User Address (traveler email)</label>
             <input
               v-model="userAddress"
               type="email"
-              class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              class="w-full rounded-md px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              style="background: var(--bg-input); border: 1px solid var(--border-input); color: var(--text-primary);"
               placeholder="matt.griffin@acmecorp.com"
             />
           </div>
 
           <!-- Options -->
           <div class="flex items-end gap-4 pb-1">
-            <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer">
-              <input v-model="forceMultiTraveler" type="checkbox" class="rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-0" />
+            <label class="flex items-center gap-1.5 text-sm cursor-pointer" style="color: var(--text-secondary);">
+              <input v-model="forceMultiTraveler" type="checkbox" class="rounded text-blue-500 focus:ring-blue-500 focus:ring-offset-0" style="border-color: var(--border-input); background: var(--bg-input);" />
               Multi-traveler
             </label>
-            <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer">
-              <input v-model="forceTmc" type="checkbox" class="rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-0" />
+            <label class="flex items-center gap-1.5 text-sm cursor-pointer" style="color: var(--text-secondary);">
+              <input v-model="forceTmc" type="checkbox" class="rounded text-blue-500 focus:ring-blue-500 focus:ring-offset-0" style="border-color: var(--border-input); background: var(--bg-input);" />
               TMC source
             </label>
           </div>
@@ -502,7 +523,8 @@ function handleTab(e) {
           <div class="flex gap-2">
             <button
               @click="generatePayload"
-              class="inline-flex items-center gap-2 rounded-md border border-gray-700 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 transition-colors"
+              class="inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors hover:opacity-80"
+              style="background: var(--bg-input); border: 1px solid var(--border-input); color: var(--text-secondary);"
             >
               <RefreshCw class="h-4 w-4" />
               Generate
@@ -521,49 +543,52 @@ function handleTab(e) {
         <!-- Webhook URL and HMAC -->
         <div class="mt-4 flex flex-col gap-3 sm:flex-row">
           <div class="flex-1">
-            <label class="block text-xs font-medium text-gray-400 mb-1">Webhook URL</label>
+            <label class="block text-xs font-medium mb-1" style="color: var(--text-muted);">Webhook URL</label>
             <input
               v-model="webhookUrlOverride"
               type="url"
-              class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+              class="w-full rounded-md px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              style="background: var(--bg-input); border: 1px solid var(--border-input); color: var(--text-primary);"
               placeholder="http://localhost:8000/webhook/..."
             />
           </div>
           <div class="sm:w-72">
-            <label class="block text-xs font-medium text-gray-400 mb-1">HMAC Secret <span class="text-gray-600">(leave blank to skip signing)</span></label>
+            <label class="block text-xs font-medium mb-1" style="color: var(--text-muted);">HMAC Secret <span style="color: var(--text-faint);">(leave blank to skip signing)</span></label>
             <input
               v-model="hmacSecretOverride"
               type="text"
-              class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+              class="w-full rounded-md px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              style="background: var(--bg-input); border: 1px solid var(--border-input); color: var(--text-primary);"
               placeholder="webhook secret"
             />
           </div>
         </div>
       </div>
 
-      <div class="mt-6 grid gap-6 lg:grid-cols-2">
+      <div class="mt-6 grid gap-6 lg:grid-cols-2 min-w-0 flex-1 min-h-0">
         <!-- Payload editor -->
-        <div class="rounded-lg border border-gray-800 bg-gray-900">
-          <div class="flex items-center justify-between border-b border-gray-800 px-4 py-3">
+        <div class="rounded-lg min-w-0 overflow-hidden flex flex-col transition-colors" style="background: var(--bg-card); border: 1px solid var(--border-card);">
+          <div class="flex items-center justify-between px-4 py-3" style="border-bottom: 1px solid var(--border-card);">
             <div class="flex items-center gap-3">
-              <h2 class="text-sm font-semibold text-gray-300">Payload</h2>
-              <span v-if="segmentSummary" class="rounded-full bg-gray-800 px-2.5 py-0.5 text-xs text-gray-400">{{ segmentSummary }}</span>
+              <h2 class="text-sm font-semibold" style="color: var(--text-secondary);">Payload</h2>
+              <span v-if="segmentSummary" class="rounded-full px-2.5 py-0.5 text-xs" style="background: var(--bg-badge); color: var(--text-muted);">{{ segmentSummary }}</span>
             </div>
             <div class="flex items-center gap-2">
               <button
                 v-if="payloadText"
                 @click="editMode = !editMode"
-                :class="editMode ? 'text-blue-400' : 'text-gray-500 hover:text-gray-300'"
+                :style="editMode ? 'color: #3b82f6' : 'color: var(--text-faint)'"
                 :title="editMode ? 'Preview' : 'Edit'"
+                class="hover:opacity-70"
               >
                 <Pencil v-if="!editMode" class="h-4 w-4" />
                 <Eye v-else class="h-4 w-4" />
               </button>
-              <button v-if="payloadText" @click="copyPayload" class="text-gray-500 hover:text-gray-300" title="Copy JSON">
+              <button v-if="payloadText" @click="copyPayload" class="hover:opacity-70" style="color: var(--text-faint);" title="Copy JSON">
                 <Check v-if="copied" class="h-4 w-4 text-green-400" />
                 <Copy v-else class="h-4 w-4" />
               </button>
-              <button v-if="payloadText" @click="copyCurl" class="text-gray-500 hover:text-gray-300" title="Copy as curl">
+              <button v-if="payloadText" @click="copyCurl" class="hover:opacity-70" style="color: var(--text-faint);" title="Copy as curl">
                 <Check v-if="copiedCurl" class="h-4 w-4 text-green-400" />
                 <Terminal v-else class="h-4 w-4" />
               </button>
@@ -584,55 +609,55 @@ function handleTab(e) {
             {{ parseError }}
           </div>
 
-          <div class="relative" style="min-height: 400px;">
+          <div class="relative flex-1 min-h-0 overflow-auto">
             <!-- Edit mode: textarea -->
             <textarea
               v-if="editMode && payloadText"
               v-model="payloadText"
               @keydown.tab="handleTab"
               spellcheck="false"
-              class="absolute inset-0 w-full h-full resize-none bg-transparent p-4 font-mono text-xs text-gray-300 leading-relaxed focus:outline-none border-0"
-              style="min-height: 400px; tab-size: 2;"
+              class="absolute inset-0 w-full h-full resize-none bg-transparent p-4 font-mono text-xs leading-relaxed focus:outline-none border-0"
+              style="tab-size: 2; color: var(--text-secondary);"
             />
             <!-- Preview mode: formatted -->
-            <div v-else class="max-h-[600px] overflow-auto p-4">
-              <pre v-if="payloadText" class="text-xs text-gray-300 leading-relaxed whitespace-pre-wrap">{{ payloadText }}</pre>
-              <p v-else class="text-sm text-gray-500 italic">Click Generate to create a payload</p>
+            <div v-else class="p-4">
+              <pre v-if="payloadText" class="text-xs leading-relaxed whitespace-pre-wrap" style="color: var(--text-secondary);">{{ payloadText }}</pre>
+              <p v-else class="text-sm italic" style="color: var(--text-faint);">Click Generate to create a payload</p>
             </div>
           </div>
         </div>
 
         <!-- Send history -->
-        <div class="rounded-lg border border-gray-800 bg-gray-900">
-          <div class="flex items-center justify-between border-b border-gray-800 px-4 py-3">
-            <h2 class="text-sm font-semibold text-gray-300">Send History</h2>
-            <button v-if="sendResults.length" @click="sendResults = []" class="text-gray-500 hover:text-gray-300">
+        <div class="rounded-lg min-w-0 overflow-hidden flex flex-col transition-colors" style="background: var(--bg-card); border: 1px solid var(--border-card);">
+          <div class="flex items-center justify-between px-4 py-3" style="border-bottom: 1px solid var(--border-card);">
+            <h2 class="text-sm font-semibold" style="color: var(--text-secondary);">Send History</h2>
+            <button v-if="sendResults.length" @click="sendResults = []" class="hover:opacity-70" style="color: var(--text-faint);">
               <Trash2 class="h-4 w-4" />
             </button>
           </div>
-          <div class="max-h-[600px] overflow-auto">
+          <div class="flex-1 min-h-0 overflow-auto">
             <div v-if="sendResults.length === 0" class="p-4">
-              <p class="text-sm text-gray-500 italic">No requests sent yet</p>
+              <p class="text-sm italic" style="color: var(--text-faint);">No requests sent yet</p>
             </div>
-            <div v-for="(result, i) in sendResults" :key="i" class="border-b border-gray-800 p-3 last:border-b-0">
+            <div v-for="(result, i) in sendResults" :key="i" class="p-3 last:border-b-0" :style="'border-bottom: 1px solid var(--border-card);'">
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
-                  <span :class="result.status === 200 ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'" class="rounded px-1.5 py-0.5 text-xs font-mono font-bold">
+                  <span :style="result.status === 200 ? 'background: var(--bg-status-ok); color: var(--text-status-ok);' : 'background: var(--bg-status-err); color: var(--text-status-err);'" class="rounded px-1.5 py-0.5 text-xs font-mono font-bold">
                     {{ result.status }}
                   </span>
-                  <span class="text-xs text-gray-500">{{ result.time }}</span>
-                  <span class="rounded bg-gray-800 px-1.5 py-0.5 text-xs text-gray-400">{{ result.instance }}</span>
+                  <span class="text-xs" style="color: var(--text-faint);">{{ result.time }}</span>
+                  <span class="rounded px-1.5 py-0.5 text-xs" style="background: var(--bg-badge); color: var(--text-muted);">{{ result.instance }}</span>
                 </div>
-                <span class="rounded bg-gray-800 px-2 py-0.5 text-xs text-gray-400">{{ result.segmentTypes }}</span>
+                <span class="rounded px-2 py-0.5 text-xs" style="background: var(--bg-badge); color: var(--text-muted);">{{ result.segmentTypes }}</span>
               </div>
-              <div class="mt-1.5 text-xs text-gray-400 truncate">{{ result.subject }}</div>
-              <div v-if="result.target" class="mt-1 text-xs text-gray-600 truncate font-mono">{{ result.target }}</div>
-              <div class="mt-1 flex items-center gap-3 text-xs text-gray-500">
+              <div class="mt-1.5 text-xs truncate" style="color: var(--text-muted);">{{ result.subject }}</div>
+              <div v-if="result.target" class="mt-1 text-xs truncate font-mono" style="color: var(--text-faint);">{{ result.target }}</div>
+              <div class="mt-1 flex items-center gap-3 text-xs" style="color: var(--text-faint);">
                 <span>{{ result.userAddress }}</span>
                 <span>{{ result.source }}</span>
               </div>
               <div class="mt-1">
-                <code class="text-xs text-gray-500">{{ JSON.stringify(result.response) }}</code>
+                <code class="text-xs break-all" style="color: var(--text-faint);">{{ JSON.stringify(result.response) }}</code>
               </div>
             </div>
           </div>
