@@ -21,7 +21,13 @@ Download the latest version for your platform from [GitHub Releases](https://git
 | Windows  | `.exe` |
 | Linux    | `.AppImage`, `.deb` |
 
-> **macOS note:** This app is not code-signed. On first launch, right-click the app and select "Open" to bypass Gatekeeper.
+> **macOS note:** This app is not code-signed. macOS will block it on first launch. To allow it, open Terminal and run:
+>
+> ```bash
+> xattr -cr /Applications/Traxo\ Webhook\ Tester.app
+> ```
+>
+> Then open the app normally.
 
 ## Development
 
