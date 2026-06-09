@@ -9,8 +9,8 @@ import { hotels } from '../data/hotels.js';
 import { carCompanies, carTypes } from '../data/cars.js';
 import { railOperators, railStations } from '../data/rail.js';
 import { rideshareProviders, rideshareLocations } from '../data/rideshare.js';
-import { tmcSources } from '../data/tmc-sources.js';
 import { travelerNames } from '../data/travelers.js';
+import { sources, getAllowedSegments, getSourcesByClassification, getUsableSources } from '../data/sources.js';
 
 // --- Theme ---
 const THEME_KEY = 'webhook-tester-theme';
@@ -77,6 +77,11 @@ function handleDeleteTarget(id) {
 const userAddress = ref('matt.griffin@acmecorp.com');
 const forceMultiTraveler = ref(false);
 const forceTmc = ref(false);
+const selectedSourceCode = ref('');
+
+const sortedSources = computed(() =>
+  getUsableSources().slice().sort((a, b) => a.name.localeCompare(b.name))
+);
 const payloadText = ref('');
 const parseError = ref('');
 const sendResults = ref([]);
@@ -99,6 +104,7 @@ watch(activeTargetId, () => {
 
 // --- Helpers ---
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+const classificationLabels = { airline: 'Airline', hotel: 'Hotel', car: 'Car Rental', rail: 'Rail', transportation: 'Transportation', tmc: 'TMC', ota: 'OTA' };
 function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 function randFlightConfNo() {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -269,19 +275,39 @@ function generateRailSegment(confNo, traveler, departDaysAhead) {
 }
 
 // --- Payload generation ---
-function generatePayload() {
-  const emailId = `test-${Date.now()}-${randInt(1000, 9999)}`;
-  const traveler = pick(travelerNames);
-  const daysAhead = randInt(7, 90);
-  const compositions = [
+function pickComposition(allowedTypes) {
+  if (allowedTypes.length === 1) return [...allowedTypes];
+
+  const allCompositions = [
     ['flight'], ['hotel'], ['car'], ['rail'], ['activity'],
     ['flight', 'hotel'], ['flight', 'hotel', 'car'], ['flight', 'car'],
     ['rail', 'hotel'],
   ];
-  const composition = pick(compositions);
-  let allSegments = [], primarySource = '', subject = '';
-  const useTmc = forceTmc.value || (!forceTmc.value && Math.random() < 0.15);
-  const overrideSource = useTmc && tmcSources.length ? pick(tmcSources) : null;
+  const valid = allCompositions.filter(c => c.every(t => allowedTypes.includes(t)));
+  return valid.length ? pick(valid) : [pick(allowedTypes)];
+}
+
+function generatePayload() {
+  const emailId = `test-${Date.now()}-${randInt(1000, 9999)}`;
+  const traveler = pick(travelerNames);
+  const daysAhead = randInt(7, 90);
+
+  // Pick source first — determines what segment types are allowed
+  let source;
+  if (selectedSourceCode.value) {
+    source = sources.find(s => s.code === selectedSourceCode.value);
+  }
+  if (!source && forceTmc.value) {
+    const tmcSources = getSourcesByClassification('tmc');
+    source = pick(tmcSources);
+  }
+  if (!source) {
+    source = pick(getUsableSources());
+  }
+
+  const allowedTypes = getAllowedSegments(source);
+  const composition = pickComposition(allowedTypes);
+  let allSegments = [], subject = '';
 
   for (const type of composition) {
     let result;
@@ -304,8 +330,13 @@ function generatePayload() {
         if (!subject) subject = `${result.segments[0].car_company} Car Rental Confirmation - ${confNo}`;
       }
     }
+
+    // Set segment source to match the top-level source
+    for (const seg of result.segments) {
+      seg.source = source.code;
+    }
+
     allSegments.push(...result.segments);
-    if (!primarySource) primarySource = result.source;
   }
 
   // Add a second traveler to each segment if multi-traveler is checked
@@ -327,7 +358,7 @@ function generatePayload() {
     id: emailId, type: 'email.updated', resource_id: emailId, created: new Date().toISOString(),
     data: { object: {
       id: emailId, mailbox_id: '977639910700152835', mailbox_type: 'Developer', status: 'Processed',
-      source: overrideSource || primarySource, class: '1',
+      source: source.code, class: '1',
       user_address: userAddress.value, from_address: userAddress.value,
       subject, created: new Date().toISOString(), modified: new Date().toISOString(), metadata: null,
       segments: allSegments,
@@ -485,17 +516,15 @@ function handleTab(e) {
       </div>
 
       <!-- Controls -->
-      <div class="mt-6 rounded-lg p-4 transition-colors" style="background: var(--bg-card); border: 1px solid var(--border-card);">
-        <div class="flex flex-col gap-4 sm:flex-row sm:items-end">
-          <!-- Target picker -->
+      <div class="mt-6 rounded-lg p-4 transition-colors space-y-3" style="background: var(--bg-card); border: 1px solid var(--border-card);">
+        <!-- Row 1: Target, Email, Buttons -->
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
           <TargetManager
             v-model="activeTargetId"
             :targets="targets"
             @save="handleSaveTarget"
             @delete="handleDeleteTarget"
           />
-
-          <!-- Email -->
           <div class="flex-1">
             <label class="block text-xs font-medium mb-1" style="color: var(--text-muted);">User Address (traveler email)</label>
             <input
@@ -506,20 +535,6 @@ function handleTab(e) {
               placeholder="matt.griffin@acmecorp.com"
             />
           </div>
-
-          <!-- Options -->
-          <div class="flex items-end gap-4 pb-1">
-            <label class="flex items-center gap-1.5 text-sm cursor-pointer" style="color: var(--text-secondary);">
-              <input v-model="forceMultiTraveler" type="checkbox" class="rounded text-blue-500 focus:ring-blue-500 focus:ring-offset-0" style="border-color: var(--border-input); background: var(--bg-input);" />
-              Multi-traveler
-            </label>
-            <label class="flex items-center gap-1.5 text-sm cursor-pointer" style="color: var(--text-secondary);">
-              <input v-model="forceTmc" type="checkbox" class="rounded text-blue-500 focus:ring-blue-500 focus:ring-offset-0" style="border-color: var(--border-input); background: var(--bg-input);" />
-              TMC source
-            </label>
-          </div>
-
-          <!-- Buttons -->
           <div class="flex gap-2">
             <button
               @click="generatePayload"
@@ -540,8 +555,33 @@ function handleTab(e) {
           </div>
         </div>
 
-        <!-- Webhook URL and HMAC -->
-        <div class="mt-4 flex flex-col gap-3 sm:flex-row">
+        <!-- Row 2: Source, Options -->
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div class="sm:w-72">
+            <label class="block text-xs font-medium mb-1" style="color: var(--text-muted);">Source <span style="color: var(--text-faint);">(blank = random)</span></label>
+            <select
+              v-model="selectedSourceCode"
+              class="w-full rounded-md px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              style="background: var(--bg-input); border: 1px solid var(--border-input); color: var(--text-primary);"
+            >
+              <option value="">Random</option>
+              <option v-for="s in sortedSources" :key="s.code" :value="s.code">{{ s.name }} ({{ classificationLabels[s.classification] }})</option>
+            </select>
+          </div>
+          <div class="flex items-end gap-4 pb-1">
+            <label class="flex items-center gap-1.5 text-sm cursor-pointer" style="color: var(--text-secondary);">
+              <input v-model="forceMultiTraveler" type="checkbox" class="rounded text-blue-500 focus:ring-blue-500 focus:ring-offset-0" style="border-color: var(--border-input); background: var(--bg-input);" />
+              Multi-traveler
+            </label>
+            <label class="flex items-center gap-1.5 text-sm cursor-pointer" style="color: var(--text-secondary);">
+              <input v-model="forceTmc" type="checkbox" class="rounded text-blue-500 focus:ring-blue-500 focus:ring-offset-0" style="border-color: var(--border-input); background: var(--bg-input);" />
+              TMC source
+            </label>
+          </div>
+        </div>
+
+        <!-- Row 3: Webhook URL and HMAC -->
+        <div class="flex flex-col gap-3 sm:flex-row">
           <div class="flex-1">
             <label class="block text-xs font-medium mb-1" style="color: var(--text-muted);">Webhook URL</label>
             <input
