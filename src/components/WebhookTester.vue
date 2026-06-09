@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
-import { Send, RefreshCw, Copy, Check, Trash2, Pencil, Eye, Terminal, Sun, Moon } from 'lucide-vue-next';
+import { Send, RefreshCw, Copy, Check, Trash2, Pencil, Eye, Terminal, Sun, Moon, Play, Square } from 'lucide-vue-next';
 import TargetManager from './TargetManager.vue';
 
 import { airlines } from '../data/airlines.js';
@@ -381,15 +381,13 @@ function getParsedPayload() {
   }
 }
 
-async function sendPayload() {
-  const payload = getParsedPayload();
-  if (!payload || !webhookUrlOverride.value) return;
-  sending.value = true;
-
+// Core send logic — returns { status, responseTimeMs }
+async function doSend(payload) {
   const body = JSON.stringify(payload);
   const targetUrl = webhookUrlOverride.value;
   const secret = hmacSecretOverride.value;
   const targetName = activeTarget.value?.name ?? 'Custom';
+  const startTime = performance.now();
 
   try {
     const headers = { 'Content-Type': 'application/json' };
@@ -404,18 +402,18 @@ async function sendPayload() {
     let status, data;
 
     if (window.electronAPI) {
-      // Electron: send via IPC to main process (no CORS)
       const result = await window.electronAPI.sendWebhook({ url: targetUrl, headers, body });
       status = result.status;
       try { data = JSON.parse(result.body); } catch { data = { raw: result.body }; }
     } else {
-      // Browser: use Vite dev proxy
       headers['x-target-url'] = targetUrl;
       const res = await fetch('/api/proxy', { method: 'POST', headers, body });
       status = res.status;
       const text = await res.text();
       try { data = JSON.parse(text); } catch { data = { raw: text }; }
     }
+
+    const responseTimeMs = Math.round(performance.now() - startTime);
 
     sendResults.value.unshift({
       time: new Date().toLocaleTimeString(),
@@ -428,7 +426,11 @@ async function sendPayload() {
       subject: payload.data?.object?.subject ?? '-',
       userAddress: payload.data?.object?.user_address ?? '-',
     });
+
+    return { status, responseTimeMs };
   } catch (e) {
+    const responseTimeMs = Math.round(performance.now() - startTime);
+
     sendResults.value.unshift({
       time: new Date().toLocaleTimeString(),
       status: 'error',
@@ -438,14 +440,129 @@ async function sendPayload() {
       source: '-', segmentTypes: '-', subject: '-',
       userAddress: payload.data?.object?.user_address ?? userAddress.value,
     });
-  } finally {
-    sending.value = false;
+
+    return { status: 'error', responseTimeMs };
   }
+}
+
+async function sendPayload() {
+  const payload = getParsedPayload();
+  if (!payload || !webhookUrlOverride.value) return;
+  sending.value = true;
+  await doSend(payload);
+  sending.value = false;
 }
 
 async function generateAndSend() {
   generatePayload();
   await sendPayload();
+}
+
+// --- Load Test ---
+const loadTestRunning = ref(false);
+const loadTestAbort = ref(false);
+const loadTestConfig = ref({ count: 100, minDelay: 2, maxDelay: 8 });
+const loadTestProgress = ref({ sent: 0, success: 0, failed: 0, totalTime: 0 });
+const loadTestDone = ref(false);
+
+const loadTestAvgTime = computed(() => {
+  const p = loadTestProgress.value;
+  return p.sent > 0 ? Math.round(p.totalTime / p.sent) : 0;
+});
+
+function sleep(ms) {
+  return new Promise(resolve => {
+    const interval = 100;
+    let elapsed = 0;
+    const check = () => {
+      elapsed += interval;
+      if (loadTestAbort.value || elapsed >= ms) return resolve();
+      setTimeout(check, interval);
+    };
+    setTimeout(check, interval);
+  });
+}
+
+async function runLoadTest() {
+  const { count, minDelay, maxDelay } = loadTestConfig.value;
+  loadTestProgress.value = { sent: 0, success: 0, failed: 0, totalTime: 0 };
+  loadTestRunning.value = true;
+  loadTestAbort.value = false;
+  loadTestDone.value = false;
+
+  for (let i = 0; i < count; i++) {
+    if (loadTestAbort.value) break;
+
+    generatePayload();
+    const payload = getParsedPayload();
+    if (!payload) break;
+
+    const result = await doSend(payload);
+    loadTestProgress.value.sent++;
+    loadTestProgress.value.totalTime += result.responseTimeMs;
+    if (result.status === 200) {
+      loadTestProgress.value.success++;
+    } else {
+      loadTestProgress.value.failed++;
+    }
+
+    // Wait random delay before next send (skip on last iteration or abort)
+    if (i < count - 1 && !loadTestAbort.value) {
+      const delay = (minDelay + Math.random() * (maxDelay - minDelay)) * 1000;
+      await sleep(delay);
+    }
+  }
+
+  loadTestRunning.value = false;
+  loadTestDone.value = true;
+}
+
+function stopLoadTest() {
+  loadTestAbort.value = true;
+}
+
+function resumeLoadTest() {
+  const remaining = loadTestConfig.value.count - loadTestProgress.value.sent;
+  if (remaining <= 0) return;
+  loadTestAbort.value = false;
+  loadTestDone.value = false;
+  loadTestRunning.value = true;
+
+  (async () => {
+    const { minDelay, maxDelay } = loadTestConfig.value;
+    const total = loadTestConfig.value.count;
+
+    for (let i = loadTestProgress.value.sent; i < total; i++) {
+      if (loadTestAbort.value) break;
+
+      generatePayload();
+      const payload = getParsedPayload();
+      if (!payload) break;
+
+      const result = await doSend(payload);
+      loadTestProgress.value.sent++;
+      loadTestProgress.value.totalTime += result.responseTimeMs;
+      if (result.status === 200) {
+        loadTestProgress.value.success++;
+      } else {
+        loadTestProgress.value.failed++;
+      }
+
+      if (i < total - 1 && !loadTestAbort.value) {
+        const delay = (minDelay + Math.random() * (maxDelay - minDelay)) * 1000;
+        await sleep(delay);
+      }
+    }
+
+    loadTestRunning.value = false;
+    loadTestDone.value = true;
+  })();
+}
+
+function resetLoadTest() {
+  loadTestProgress.value = { sent: 0, success: 0, failed: 0, totalTime: 0 };
+  loadTestDone.value = false;
+  loadTestAbort.value = false;
 }
 
 async function copyPayload() {
@@ -605,7 +722,101 @@ function handleTab(e) {
         </div>
       </div>
 
-      <div class="mt-6 grid gap-6 lg:grid-cols-2 min-w-0 flex-1 min-h-0">
+      <!-- Load Test -->
+      <div class="mt-4 rounded-lg p-4 transition-colors" style="background: var(--bg-card); border: 1px solid var(--border-card);">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div class="sm:w-24">
+            <label class="block text-xs font-medium mb-1" style="color: var(--text-muted);">Count</label>
+            <input
+              v-model.number="loadTestConfig.count"
+              type="number"
+              min="1"
+              max="10000"
+              :disabled="loadTestRunning || loadTestDone"
+              class="w-full rounded-md px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              style="background: var(--bg-input); border: 1px solid var(--border-input); color: var(--text-primary);"
+            />
+          </div>
+          <div class="sm:w-28">
+            <label class="block text-xs font-medium mb-1" style="color: var(--text-muted);">Min delay (s)</label>
+            <input
+              v-model.number="loadTestConfig.minDelay"
+              type="number"
+              min="0"
+              step="0.5"
+              :disabled="loadTestRunning || loadTestDone"
+              class="w-full rounded-md px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              style="background: var(--bg-input); border: 1px solid var(--border-input); color: var(--text-primary);"
+            />
+          </div>
+          <div class="sm:w-28">
+            <label class="block text-xs font-medium mb-1" style="color: var(--text-muted);">Max delay (s)</label>
+            <input
+              v-model.number="loadTestConfig.maxDelay"
+              type="number"
+              min="0"
+              step="0.5"
+              :disabled="loadTestRunning || loadTestDone"
+              class="w-full rounded-md px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              style="background: var(--bg-input); border: 1px solid var(--border-input); color: var(--text-primary);"
+            />
+          </div>
+          <div class="flex gap-2">
+            <button
+              v-if="!loadTestRunning && !loadTestDone"
+              @click="runLoadTest"
+              :disabled="!webhookUrlOverride"
+              class="inline-flex items-center gap-2 rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
+            >
+              <Play class="h-4 w-4" />
+              Start Load Test
+            </button>
+            <button
+              v-if="loadTestRunning"
+              @click="stopLoadTest"
+              class="inline-flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors"
+            >
+              <Square class="h-4 w-4" />
+              Stop
+            </button>
+            <button
+              v-if="loadTestDone && !loadTestRunning && loadTestAbort && loadTestProgress.sent < loadTestConfig.count"
+              @click="resumeLoadTest"
+              class="inline-flex items-center gap-2 rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 transition-colors"
+            >
+              <Play class="h-4 w-4" />
+              Continue
+            </button>
+            <button
+              v-if="loadTestDone && !loadTestRunning"
+              @click="resetLoadTest"
+              class="inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors hover:opacity-80"
+              style="background: var(--bg-input); border: 1px solid var(--border-input); color: var(--text-secondary);"
+            >
+              <RefreshCw class="h-4 w-4" />
+              Reset
+            </button>
+          </div>
+          <!-- Live stats -->
+          <div v-if="loadTestRunning || loadTestDone" class="flex items-end gap-4 text-xs pb-1" style="color: var(--text-muted);">
+            <span class="font-mono font-bold" style="color: var(--text-primary);">{{ loadTestProgress.sent }} / {{ loadTestConfig.count }}</span>
+            <span style="color: var(--text-status-ok);">{{ loadTestProgress.success }} ok</span>
+            <span v-if="loadTestProgress.failed" style="color: var(--text-status-err);">{{ loadTestProgress.failed }} failed</span>
+            <span>avg {{ loadTestAvgTime }}ms</span>
+            <span v-if="loadTestDone && !loadTestRunning" class="font-medium" style="color: var(--text-primary);">{{ loadTestAbort ? 'Stopped' : 'Done' }}</span>
+          </div>
+        </div>
+        <!-- Progress bar -->
+        <div v-if="loadTestRunning || loadTestDone" class="mt-3 h-2 rounded-full overflow-hidden" style="background: var(--bg-input);">
+          <div
+            class="h-full rounded-full transition-all duration-300"
+            :class="loadTestRunning ? 'bg-blue-500' : (loadTestProgress.failed > 0 ? 'bg-yellow-500' : 'bg-green-500')"
+            :style="{ width: (loadTestProgress.sent / loadTestConfig.count * 100) + '%' }"
+          ></div>
+        </div>
+      </div>
+
+      <div class="mt-4 grid gap-6 lg:grid-cols-2 min-w-0 flex-1 min-h-0">
         <!-- Payload editor -->
         <div class="rounded-lg min-w-0 overflow-hidden flex flex-col transition-colors" style="background: var(--bg-card); border: 1px solid var(--border-card);">
           <div class="flex items-center justify-between px-4 py-3" style="border-bottom: 1px solid var(--border-card);">
